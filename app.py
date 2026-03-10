@@ -231,10 +231,15 @@ def get_rag_engine_v2(model_name, _llm, _vector_store, _tracer):
     return RAGEngine(_llm, _vector_store, tracer=_tracer, k=3, distance_threshold=0.3)
 
 @st.cache_resource
-def get_sdk_tracer_v2(url, salt="final_reboot_v10"):
-    return smartllmops.init(backend_url=url)
+def get_sdk_tracer_v2(url, env, model, provider, salt="final_reboot_v11"):
+    return smartllmops.init(
+        backend_url=url, 
+        environment=env, 
+        model=model, 
+        provider=provider
+    )
 
-sdk_tracer = get_sdk_tracer_v2(backend_url)
+sdk_tracer = get_sdk_tracer_v2(backend_url, "dev", "llama-3.1-8b-instant", "groq")
 rag_engine = get_rag_engine_v2(selected_model if "selected_model" in locals() else AVAILABLE_MODELS[0], llm, vector_store, sdk_tracer)
 
 
@@ -332,12 +337,9 @@ if prompt := st.chat_input("Send prompt..."):
             st.error("Engine unavailable. Index missing.")
     else:
         with st.chat_message("assistant"):
-            
-            trace_id = f"trace-{uuid.uuid4().hex[:8]}"
-            sdk_tracer.start_trace()
-            
             with st.spinner("Processing..."):
                 start_time_ms = int(time.time() * 1000)
+                sdk_tracer.start_trace()
                 result = rag_engine.run(prompt)
                 
                 raw_answer = result.get("output", "Empty signal.")
@@ -372,16 +374,14 @@ if prompt := st.chat_input("Send prompt..."):
                 if not answer and raw_answer:
                     answer = raw_answer.strip()
 
-                latency = result.get("latency_ms", 0)
-                docs = result.get("documents_found", 0)
-                
-                # Telemetry via SDK
+                # Telemetry via SDK (Self-Assembly Mode)
                 sdk_tracer.export_trace(
                     result, 
                     query=prompt, 
                     session_id=session_id, 
                     user_id=user_id, 
-                    timestamp=start_time_ms
+                    timestamp=start_time_ms,
+                    rag_docs=result.get("safe_docs")
                 )
 
             # Display and store
