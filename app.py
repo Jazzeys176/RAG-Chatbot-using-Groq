@@ -150,7 +150,6 @@ st.markdown("""
 load_dotenv()
 
 groq_api_key = os.getenv("GROQ_API_KEY")
-backend_url = os.getenv("BACKEND_TRACE_URL")
 
 AVAILABLE_MODELS = [
     "llama-3.1-8b-instant",
@@ -231,15 +230,14 @@ def get_rag_engine_v2(model_name, _llm, _vector_store, _tracer):
     return RAGEngine(_llm, _vector_store, tracer=_tracer, k=3, distance_threshold=0.3)
 
 @st.cache_resource
-def get_sdk_tracer_v2(url, env, model, provider, salt="final_reboot_v11"):
+def get_sdk_tracer_v2(env, model, provider, salt="final_reboot_v11"):
     return smartllmops.init(
-        backend_url=url, 
         environment=env, 
         model=model, 
         provider=provider
     )
 
-sdk_tracer = get_sdk_tracer_v2(backend_url, "dev", "llama-3.1-8b-instant", "groq")
+sdk_tracer = get_sdk_tracer_v2("dev", "llama-3.1-8b-instant", "groq")
 rag_engine = get_rag_engine_v2(selected_model if "selected_model" in locals() else AVAILABLE_MODELS[0], llm, vector_store, sdk_tracer)
 
 
