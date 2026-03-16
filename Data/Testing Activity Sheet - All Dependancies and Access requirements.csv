@@ -1,0 +1,222 @@
+,,,,,,,
+,EMR Serverless Failover,,,,,,
+No,Blockers / Dependency,Purpose,Priority,Owner,ETA,Comments,Questions
+1,"Airflow is not able to connect to EMR Serverless, Redshift, and Glue services.",The Health Check DAG needs to connect to these services to retrieve the service health status.,Low,Bharathi Srinivasan,20 March,"Why: The Health Check DAG and DR orchestration workflows depend on Airflow being able to reach EMR Serverless, Redshift, and Glue to validate service health and trigger or route jobs correctly. Without connectivity, failover and DR tests cannot be executed.
+
+Observed Issue:
+
+1. Tested API Calls & Error:
+EMR Serverless: list_applications(), get_application()
+Glue: get_crawlers()
+Redshift: describe_clusters()
+Error: “Connection was closed before we received a valid response from endpoint URL.”
+2. This suggests that Airflow cannot reach AWS service endpoints in one or both regions.
+
+Current Setup:
+1. Airflow uses the airflow-oidc-sa role to connect to AWS.
+2. This role is mapped to cfg-ede-paas-oidc-role (as per Yogesh).
+
+Potential Causes:
+1. Network routing or security group restrictions preventing Airflow workers/schedulers (deployed on PaaS containers) from reaching AWS endpoints.
+2. Missing or insufficient cross-region IAM permissions.
+
+Action Required:
+
+1.Validate network connectivity from Airflow workers/schedulers to AWS service endpoints in both regions.
+2.Ensure IAM policies allow Airflow to perform the above API calls successfully.
+3. Create or update required VPC endpoints 
+4.Re-test:
+EMR Serverless: list_applications(), get_application()
+Glue: get_crawlers()
+Redshift: describe_clusters()",
+2,"EDF code changes for ApplicationConfig have not been pushed to the QA environment. Because of this, testing cannot be performed in QA.","Required to test EMR Serverless failover along with other DR scenarios such as S3 failover, Redshift failover, and full region outage testing.
+",High,"Punjai Puliampatti, Lingeswaran",20 March,"Why: ApplicationConfig carries region/endpoint/app IDs/feature flags that control DR behavior. Without it in QA, we cannot validate failover logic safely.
+ Action required: Deploy EDF to QA, run test DAGs to verify ApplicationConfig is read, simulate failover, confirm logs/metrics and rollback/restore flows.
+Impact if not resolved: DR logic remains untested. production rollout becomes risky and timelines slip; higher chance of configuration drift and failures during failover in both QA & prod.",if the app id is changed then do we have to do deployment every tiem? are we not using parameter store for this? what are steps to be followed for EMR serverless DR failover ? 
+3, DR Application IDs need to be configured in the S2R configuration in QA DCC (test application) and in prod DCC (DR app Ids). ,"This is required for jobs/workflows to run on the secondary EMR Serverless when the primary serverless environment is down. The application configuration needs to be updated so the EDF framework can pick it up.
+",High,"Punjai Puliampatti, Lingeswaran",20 March,"Why: The EDF framework references DR Application IDs during failover to target the correct EMR Serverless apps and resources in the secondary region.
+Action required: Validate ID resolution in through DAG runs in QA, then promote to Prod with the same pattern.","Do we have EMR serverless in secondary? 
+what role is used by job management api to connect to secondary EMR serverless?
+Does it have needed access? "
+4,EMR Serverless in the secondary region is not able to access primary region resources such as S3 or Redshift.,"Required to test the scenario where EMR Serverless in the DR region accesses primary region resources (S3, Redshift, etc.).",High,EDE Cloud Platform,20 March,"Testing Scenarios: We need to manually validate the following scenarios:
+
+1. Secondary EMR Serverless → Primary S3
+2. Secondary EMR Serverless → Primary Redshift
+3. Primary EMR Serverless → Secondary Redshift
+4. Primary EMR Serverless → Secondary S3
+5. Primary EMR Serverless → Primary S3 and vice versa
+6. Primary EMR Serverless → Primary Redshift and vice versa
+
+These scenarios ensure the pipeline can operate correctly during failover and cross-region execution conditions.
+
+Blocker: To test manually we need airflow to connect to emr-serverless, redshift and glue in both the regions (us-east-1 and us-east-2)
+
+Action After Unblock:
+1. Configure Airflow DAGs to interact with EMR Serverless applications in both regions.
+2. Execute manual test scenarios for PR ↔ DR cross-region access.
+3. Validate that EMR Serverless workloads can access S3 and Redshift resources across regions.
+4. Confirm pipeline functionality for failover and disaster recovery scenarios.","Have you raised ticket to open the ports? 
+Hvae you checked which role or credentials tries to access primary S3? Does that role have required access to connect and fetch data across region? how will emr serverless know which "
+5,Production Airflow deployment is pending from the CFG team in both the primary and secondary regions.,Required to test the Health Check DAG functionality.,High,Bharathi Srinivasan,8 May,"Current Status:
+
+1. As per discussion with the CFG team, Airflow is not currently available in region-2 for the QA environment.
+2. Additionally, Production Airflow deployment in both regions is still pending.
+
+Why this is required:
+Airflow is required to test the Health Check DAG and DR orchestration workflows. The Health Check DAG is responsible for validating the availability of services and triggering failover scenarios when required.
+
+To properly validate disaster recovery scenarios before moving to production, we need Airflow available in both regions in QA.
+
+1. This is necessary to test scenarios such as:
+2.Full region outage simulation
+3. S3 failover scenarios
+4. Cross-region orchestration of EMR Serverless, Redshift, and Glue
+5. Health Check DAG validation
+
+Without Airflow in region-2 (QA), it is not possible to validate these failover workflows before promoting the solution to production.",Send email with what is pending ad with whom it is pending
+6,"In QA, Airflow is not available in the secondary region.",Required to test the scenario where Airflow is down in the primary region.,High,Bharathi Srinivasan,20 March,"Why: We must test the “Airflow down in primary, orchestrate from secondary” scenario to validate operational continuity.
+ Action required: Stand up secondary QA Airflow, replicate DAGs/connections/variables, execute DR drills with primary disabled, document switchover steps.
+ Requirements to unblock: Secondary Airflow infra, CI/CD mirroring for DAGs, network/IAM parity with primary, Datadog integration in secondary.
+ Impact if not resolved: We cannot validate controller failover; gaps will surface only in prod incidents; prolonged orchestration outages.
+",
+7,"DCC jobs need to be promoted from Dev → QA and QA → Prod.
+","Required to test job execution in the EDF framework in QA and Production environments.
+
+",High,EDE Framework,20 March,"Why: Promotion ensures the exact test job definitions and parameters exercised in QA are available in Prod for reliable DR behavior.
+    Action required:Run the test jobs for the scenarios, capture evidence; then promote to Prod with the same versions and configs.
+    Requirements to unblock: Release approvals, process understanding & support from DCC team.
+    Impact if not resolved: Environment drift leads to unexpected failures during DR; inability to reproduce QA outcomes in Prod.
+",
+8,"OpenShift endpoint configuration check.
+","Required to validate OpenShift connectivity in the DR region from the primary job management container for DR EMR Serverless.
+
+from ocp container (job mgnt)",High,CFG Team,20 March,"Why: Job management container needs reliable connectivity to DR EMR Serverless endpoints; OCP routes, DNS, SSL, and egress must be validated.
+ Action required: Execute connectivity checks (DNS/443), submit a sample job to DR. capture logs/metrics.
+ Requirements to unblock: OCP route/egress rules, firewall allow‑lists, service mesh policies, CA trust chain, and proper service account/IAM binding.
+Impact if not resolved: Job submissions to DR will fail or be intermittent; orchestration will be unreliable during region outages.
+",
+,,,,,,,
+,Redshift Service Failover,,,,,,
+,,,,,,,
+No,Blockers / Dependency,Purpose,Priority,Owner,ETA,Comments,
+1,Failure detection through Health Check DAG.,The Airflow Health Check DAG detects if Redshift is down and updates the Health JSON status,High,Bharathi Srinivasan,20 March,"Why: Timely detection is essential to trigger freeze/failover actions and prevent cascading failures in dependent pipelines.
+    Action required: Enable DAG, simulate Redshift outage scenarios, validate health JSON updates and downstream notifications/escalations.
+    Requirements to unblock: Stable Airflow-Redshift connectivity, health query definitions, error thresholds, and write permissions to the health state store.
+    Impact if not resolved: Delayed detection; pipelines continue to fail noisily; increased data loss and operational toil.
+",
+2,"EDPS team needs to freeze workflows when Redshift failure is detected.
+","Required for handling Redshift outage or full region outage scenarios in Production.
+",Medium,CFG Team,24 April,"Why: Freezing prevents continued writes/reads that fail or corrupt checkpoints during a Redshift outage.
+    How: create ticket with EDPS support team
+    Requirements to unblock: to know the process & understand the freeze controls, comms template for incident coordination.
+    Impact if not resolved: Jobs will thrash/fail; potential data inconsistency and prolonged recovery efforts.
+",
+3,"There is no Redshift cluster or Glue crawlers available in the secondary region. IAM permissions are also required to create a Redshift cluster from the Airflow DAG and to run Glue crawlers in the secondary region.
+",Required to test Redshift failover from primary to secondary Redshift.,Medium,CFG Team,24 April,"Why this is required:
+* A DR target is required for controlled failover 
+* We need to validate the Redshift failover mechanism from the Primary region to the Disaster Recovery (DR) region (us-east-2).
+* In the failover scenario, if the primary Redshift cluster is unavailable, the Airflow DAG will trigger the workflow to create the Redshift cluster in the secondary region (us-east-2).
+* The Airflow DAG also triggers Glue crawlers as part of the pipeline to update metadata before processing.
+* Currently, there is no Redshift cluster or Glue crawlers available in the secondary region, which prevents us from testing the failover workflow.
+
+Request:
+
+* Create a Redshift cluster in us-east-2 (DR region).
+* Create the required Glue crawlers in us-east-2.
+* Provide the necessary IAM permissions to the Airflow role attached to airflow-oidc-sa to allow:
+   * Redshift cluster creation and management
+   * Running and managing Glue crawlers
+   * Accessing resources in the secondary region.
+
+Action required:
+
+* Configure the Airflow DAG to create or use the Redshift cluster in the DR region (us-east-2) when the primary Redshift cluster is unavailable.
+* Trigger Glue crawlers in the secondary region to update the required metadata.
+* Execute the pipeline to validate the Redshift failover from Primary to DR region.
+
+  Impact if not resolved: Failover cannot proceed. prolonged outages for analytics use cases; business SLAs at risk.","      ""Sid"": ""GlueCatalogRead"",
+      ""Effect"": ""Allow"",
+      ""Action"": [
+        ""glue:GetDatabase"",
+        ""glue:GetDatabases"",
+        ""glue:GetTable"",
+        ""glue:GetTables""
+      ],
+
+
+      ""Sid"": ""GlueCrawlerExecution"",
+      ""Effect"": ""Allow"",
+      ""Action"": [
+        ""glue:StartCrawler"",
+        ""glue:StopCrawler"",
+        ""glue:GetCrawler"",
+        ""glue:GetCrawlerMetrics"",
+        ""glue:ListCrawlers""
+      ],
+
+      ""Sid"": ""RedshiftClusterManagement"",
+      ""Effect"": ""Allow"",
+      ""Action"": [
+        ""redshift:CreateCluster"",
+        ""redshift:DescribeClusters"",
+        ""redshift:ModifyCluster"",
+        ""redshift:CreateClusterSubnetGroup"",
+        ""redshift:DescribeClusterSubnetGroups"",
+        ""redshift:CreateClusterParameterGroup"",
+        ""redshift:DescribeClusterParameterGroups"",
+        ""redshift:CreateTags"",
+        ""redshift:DescribeTags""
+      ],"
+4,EDF changes need to be deployed in both primary and secondary regions in Production.,Required to map the EDF framework for DR failover.,Medium,"Punjai Puliampatti, Lingeswaran",8 May,"Why: EDF must map and control failover behavior (routing, retries, IDs) consistently across regions in Prod.
+    Action after unblock: Deploy EDF to both regions, run non-disruptive DR tests, confirm telemetry and rollback behavior, freeze window planning.
+    Requirements to unblock: CI/CD approvals, Prod secrets/config sync & monitoring dashboards for both regions.
+    Impact if not resolved: Inconsistent behavior across regions; failover paths may break in Prod; elevated incident risk.
+",
+5,Glue in the secondary region should repoint to DR S3.,Required to run automated Glue crawlers to repoint Redshift Spectrum tables to DR S3 buckets.,Medium,CFG Team,24 April,"Why: Spectrum/external tables depend on correct data lake locations; DR requires pointing to replicated S3 prefixes/buckets.
+    Action required: Run Glue crawlers, update catalog/database/table locations, validate Spectrum queries and downstream jobs.
+    Requirements to unblock: DR S3 structure parity, crawler roles with S3/KMS access, catalog permissions, and rollout plan to avoid reader disruption.
+    Impact if not resolved: Queries hit stale/missing data; DR cluster becomes unusable for analytics.
+",
+6,Downstream jobs need to point to the DR Redshift cluster,"Downstream systems such as Snowflake, MongoDB, and MySQL must be repointed to the DR Redshift cluster.",Medium,CFG Team,24 April,"Why: Consumers (Snowflake, MongoDB, MySQL, etc.) need to switch endpoints to the DR Redshift during failover to restore service if it is region specific URLS.
+    Action required: Update connection strings/secrets, run sanity queries, validate pipeline resumes and data reconciliation.
+    Requirements to unblock: client allow‑lists/security groups, application config toggles/feature flags, communication plan to consumers.
+    Impact if not resolved: Downstream systems remain broken despite Redshift DR availability; business processes remain impacted.
+",
+7,Enable bi-directional CRR from Primary S3 to DR S3.,Required to resume pipelines from Autosys/Airflow using checkpoints and reconcile the data between primary and DR regions.,Medium,EDE Cloud Platform,24 April,"Why: Bi‑directional CRR ensures checkpoint/state and late-arriving data are synchronized to resume pipelines and reconcile after failover.
+    Action required: Validate replication policies, test object/version replication both ways, monitor lag metrics.
+    Requirements to unblock: CRR policies, IAM/KMS grants, replication metrics enabled, prefix filters, and replication metrics/alerts in Datadog.
+    Impact if not resolved: Pipelines cannot resume cleanly.  data divergence between regions, manual reconciliation with EDPS support team involvement - overhead increases.
+",
+,,,,,,,
+,,,,,,,
+,S3 / Full Region Outage Failover,,,,,,
+No,Blockers / Dependency,Purpose,Priority,Owner,ETA,Comments,
+1,EDF changes need to be deployed in the secondary region.,"Required to test the full region outage scenario, ensuring EDF applications are ready to run in the secondary region.
+",Medium,"Punjai Puliampatti, Lingeswaran",20 March,"Why: During a full region outage, EDF in secondary must be able to start/route jobs immediately.
+    Action required: Execute full DR playbook in secondary (job submission, metadata refresh, queries), measure RTO/RPO, and tune retries/backoff.
+    Requirements to unblock: EDF binaries/configs in secondary, secrets/roles, network endpoints, and consistent app IDs/queues.
+    Impact if not resolved: DR activation will stall; missed RTO/RPO targets; extended downtime.
+",
+2,EDF workflow sign-off pending.,Required to complete DR validation and finalize the workflow readiness.,High,"Punjai Puliampatti, Lingeswaran",20 March,"Why: Formal sign‑off confirms the DR workflow is tested, repeatable, and auditable before Prod adoption.
+Action required: Conduct final QA drill, capture evidence, close defects, obtain stakeholder approvals, and publish the DR runbook.
+ Requirements to unblock: Test evidence, acceptance criteria met, approval matrix, and versioned documentation.
+ Impact if not resolved: Governance gaps. inability to proceed to Prod DR readiness; compliance and operational risk remain open.
+",
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,Monitoring & Alerts,,,,,,
+No,Blockers / Dependency,Purpose,Priority,Owner,ETA,Comments,
+1,"S3 Replication Lag – In the QA and Prod environment, Cross-Region Replication (CRR) is currently not enabled.
+
+In the Production environment, CRR is enabled but replication metrics are not available.",Required to monitor replication lag in the Datadog dashboard and generate alerts.,High,EDE Cloud Platform,12 March,"Email has been sent and a support ticket has been raised with the concerned team to enable and provide access to the required replication metrics. Currently awaiting their response.
+",
+2,Redshift Snapshot Lag – Custom metrics are required.,Required to monitor snapshot replication lag in the Datadog dashboard and send alerts.,High,DataDog Team,20 March,"We have connected with the team and shared an email to understand the process for collecting custom metrics from AWS using the custom agent. As per yesterday’s discussion, AWS custom metrics integration with Datadog has not yet been implemented. Awaiting guidance from the team to proceed.
+    Why: Snapshot replication timing determines point‑in‑time recovery and data loss window (RPO).
+Impact if not resolved: Unknown snapshot freshness; higher data loss risk; uninformed failover decisions.",
+3,EMR Serverless Job Metrics – Custom metrics are required to monitor job execution and status,Required to monitor EMR Serverless job metrics in the Datadog dashboard and send alerts.,High,DataDog Team,20 March,"The same approach as Redshift will be followed. We have reached out to the team via email to understand how the custom agent can be used to collect EMR Serverless custom metrics from AWS. Waiting for their response.
+Action after unblock: Publish custom metrics/tags (app_id, region, health), build dashboards and alerts, validate against test runs.
+Impact if not resolved: Failures go undetected; MTTR increases; difficulty proving DR readiness.",
+4,Webhook Logs access.,Required to configure Datadog to trigger the Airflow DAG to initiate the DR setup.,High,CFG Team,13 March,"While triggering the webhook directly from Datadog, the corresponding logs are not visible, which is preventing validation of the webhook integration. A Datadog engineer(McLean) has raised this via email with the relevant team, and we are currently awaiting their response.",
+5,Datadog API Key is required.,Required to push custom metrics to the Datadog dashboard.,High,DataDog Team,20 March,"The request for Datadog API key enablement will be raised in parallel to avoid delays in the implementation timeline. In the meantime, we are awaiting confirmation from the Datadog team regarding the recommended approach for pushing custom metrics. If the API key is not required based on their guidance, the request will be cancelled accordingly.",
+6, No Airflow-related metrics or data are appearing in the Datadog Airflow dashboard ,"DR setup activities, we are currently working on configuring monitoring and dashboards for our Airflow DAGs in Datadog.",High,DataDog Team,17 March,"The Email has been sent to the team to look into why the Airflow datadog dashoboard is not been able to view the data ,Since we also need to set up DAG monitoring and notification alerts, having these metrics available is important for us to proceed with the configuration.",

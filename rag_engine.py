@@ -10,7 +10,7 @@ logger = logging.getLogger("rag_logger")
 
 class RAGEngine:
 
-    def __init__(self, llm, vector_store, tracer=None, k=6, max_context_tokens=900, distance_threshold=0.5):
+    def __init__(self, llm, vector_store, tracer=None, k=6, max_context_tokens=2000, distance_threshold=0.65):
 
         self.llm = llm
         self.vector_store = vector_store
@@ -302,9 +302,6 @@ Return only the rewritten query.
                 current_tokens += tokens
 
                 seen_parents.add(content)
-
-            if len(truncated_docs) >= self.k:
-                break
 
         return truncated_docs, docs_with_scores
 

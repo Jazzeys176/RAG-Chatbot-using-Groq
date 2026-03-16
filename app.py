@@ -249,7 +249,7 @@ vector_store = get_vector_store(embeddings, index_mtime)
 def get_rag_engine_v2(model_name, _llm, _vector_store, _tracer):
     if not _vector_store:
         return None
-    return RAGEngine(_llm, _vector_store, tracer=_tracer, k=3, distance_threshold=0.3)
+    return RAGEngine(_llm, _vector_store, tracer=_tracer, k=6, distance_threshold=0.65)
 
 @st.cache_resource
 def get_sdk_tracer_v2(env, model, provider, salt="final_reboot_v11"):
