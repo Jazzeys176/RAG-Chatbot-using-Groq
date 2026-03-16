@@ -82,7 +82,17 @@ def load_documents():
                 documents.append((text, file))
             elif file.endswith(".csv"):
                 df = pd.read_csv(file_path)
-                text = df.astype(str).agg(" ".join, axis=1).str.cat(sep="\n")
+                # Drop empty header rows if any
+                df = df.dropna(how='all')
+                
+                rows = []
+                for _, row in df.iterrows():
+                    # Create structured string: "Column: Value | Column: Value"
+                    row_str = " | ".join([f"{col}: {val}" for col, val in row.items() if pd.notna(val)])
+                    if row_str.strip():
+                        rows.append(row_str)
+                
+                text = "\n\n".join(rows)
                 documents.append((text, file))
             elif file.endswith(".pdf"):
                 loader = PyPDFLoader(file_path)

@@ -10,7 +10,7 @@ logger = logging.getLogger("rag_logger")
 
 class RAGEngine:
 
-    def __init__(self, llm, vector_store, tracer=None, k=6, max_context_tokens=2000, distance_threshold=0.65):
+    def __init__(self, llm, vector_store, tracer=None, k=6, max_context_tokens=2000, distance_threshold=0.60):
 
         self.llm = llm
         self.vector_store = vector_store
@@ -120,12 +120,16 @@ Return only label.
     def _rewrite_query_raw(self, query):
 
         prompt = f"""
-Rewrite this query to improve document retrieval.
+INSTRUCTION: Rewrite the user's query into a descriptive natural language search phrase to improve vector document retrieval.
+RULES:
+1. Do NOT generate SQL, code, or structured database queries.
+2. Use synonyms and technical variations of the terms.
+3. Return ONLY the rewritten natural language phrase.
 
-Query:
+User Query:
 {query}
 
-Return only the rewritten query.
+Rewritten Phrase:
 """
 
         response = self.llm.invoke(prompt)
