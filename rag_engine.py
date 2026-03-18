@@ -205,7 +205,7 @@ Rewritten Phrase:
                 result_parser=lambda r, args, kwargs: {
                     "metadata": {
                         "documents": [
-                            {"content_preview": doc.page_content[:200]}
+                            {"content_preview": doc.page_content}
                             for doc, _ in r[0]
                         ],
                         "scores": [
